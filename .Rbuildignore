@@ -1,0 +1,9 @@
+^Meta$
+^doc$
+^docs$
+^data-raw$
+^.*\.Rproj$
+^\.Rproj\.user$
+^CITATION.cff
+^src/gllvm\.dll$
+^src/gllvm\.o$
