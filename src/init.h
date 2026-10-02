@@ -54,14 +54,14 @@ extern "C" {
     {NULL, NULL, 0}
   };
   
-//   void R_init_gllvm(DllInfo *dll)
-//   {
-//     R_registerRoutines(dll, NULL, R_CallDef, NULL, NULL);
-//     R_useDynamicSymbols(dll, FALSE);
-// #ifdef TMB_CCALLABLES
-//     TMB_CCALLABLES("gllvm");
-// #endif
-//   }
+  void R_init_gllvm(DllInfo *dll)
+  {
+    R_registerRoutines(dll, NULL, R_CallDef, NULL, NULL);
+    R_useDynamicSymbols(dll, FALSE);
+#ifdef TMB_CCALLABLES
+    TMB_CCALLABLES("gllvm");
+#endif
+  }
   
 }
 
