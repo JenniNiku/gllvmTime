@@ -140,8 +140,7 @@ Type objective_function<Type>::operator() ()
     nu = dLV.cols();
     // }
     // nlvr=0; num_lv=0; num_lv_c=0;
-    //Not yet combined with num_RR or quadratic
-    quadratic=0;
+    //Not yet combined with num_RR
     // num_RR=0;
   }
   
@@ -2559,6 +2558,7 @@ Type objective_function<Type>::operator() ()
               for (j=0; j<p;j++){
                 cQ.col(j) += 0.5*dLV.col(d)*((newlam.col(j).transpose()*DAATD)*newlam.col(j));
               }
+              for (typename Eigen::SparseMatrix<Type>::InnerIterator it(dLV,d); it; ++it) A(it.row()) = Delta*Alvm;
             }
             nll -= 0.5*(nu*num_corlv);
             
@@ -2602,11 +2602,13 @@ Type objective_function<Type>::operator() ()
                   Type trSinvA = (Slvinv.diagonal().array() * AtempSq.array()).sum();
                   nll -= -0.5 * trSinvA;
 
+                  matrix<Type> rv = dLV*AtempSq.matrix();
                   // 0.5*lambda_qj*A_qii*lambda_qj
                   for (j=0; j<p;j++){
                     Type sca = 0.5*pow(newlam(q,j),2)*pow(Delta(q,q),2);
-                    cQ.col(j) += sca*(dLV*AtempSq.matrix());
+                    cQ.col(j) += sca*rv;
                   }
+                  for (i=0; i<n; i++) A(i)(q,q) = Delta(q,q)*sqrt(rv(i,0));
                   // 0.5*logdet(A)
                   nll -= Atemp.array().log().sum();
 
@@ -2636,10 +2638,12 @@ Type objective_function<Type>::operator() ()
 
                   // 0.5*lambda_qj*A_qii*lambda_qj
                   AAT = Atemp*Atemp.transpose();
+                  matrix<Type> rv = dLV*AAT.diagonal().matrix();
                   for (j=0; j<p;j++){
                     Type sca = 0.5*pow(newlam(q,j),2)*pow(Delta(q,q),2);
-                    cQ.col(j) += sca*(dLV*AAT.diagonal().matrix()); //this works
+                    cQ.col(j) += sca*rv;
                   }
+                  for (i=0; i<n; i++) A(i)(q,q) = Delta(q,q)*sqrt(rv(i,0));
 
                   // 0.5*logdet(A) -0.5*tr(Sinv*A); trace(Slvinv*AAT) = (Slvinv⊙AAT).sum() since both symmetric
                   nll -= Atemp.diagonal().array().log().sum() - 0.5*((Slvinv.array() * AAT.array()).sum());
@@ -2710,6 +2714,8 @@ Type objective_function<Type>::operator() ()
               // nll -= num_corlv*Alvm.diagonal().array().log().sum() + nu*AQ.diagonal().array().log().sum();
               // nll -= num_corlv*log(Alvm.determinant()) + nu*log(AQ.determinant()) + 0.5*num_corlv*nu;
 
+              matrix<Type> rv = dLV*matrix<Type>(Alvm.rowwise().squaredNorm());
+              for (i=0; i<n; i++) A(i) = sqrt(rv(i,0))*Delta*AQ;
               // Alvm *= Alvm.transpose();
               // AQ *= AQ.transpose();
               Alvm = Alvm*Alvm.transpose();
@@ -2727,7 +2733,7 @@ Type objective_function<Type>::operator() ()
               // 0.5*lambda_qj*A_qii*lambda_qj
               for (j=0; j<p;j++){
                 Type sca = 0.5 * (newlam.col(j).transpose() * AQt * newlam.col(j)).sum();
-                cQ.col(j) += sca * (dLV * Alvm.diagonal());
+                cQ.col(j) += sca * rv;
                 // cQ.col(j) += 0.5*(dLV*Alvm.diagonal())*((newlam.col(j).transpose()*(Delta*AQ*Delta.transpose()))*newlam.col(j));
               }
 
@@ -2796,14 +2802,17 @@ Type objective_function<Type>::operator() ()
               
               
               it_ind = 0;
+              matrix<Type> rv = matrix<Type>::Zero(n,1);
               for(i=0; i<nu; i++){
                 // Compute Alvm*Alvm'
                 AlvAlvT = Alvm(i) * Alvm(i).transpose();
+                matrix<Type> rvi = dLV.block(0,it_ind, dLV.rows(), times(0,i))*AlvAlvT.diagonal();
+                rv += rvi;
                 
                 // Update cQ with 0.5*gamma'A gamma
                 for (j=0; j<p;j++){
                   Type sca = 0.5*pow(newlam(q,j),2)*pow(Delta(q,q),2);
-                  cQ.col(j) += sca*(dLV.block(0,it_ind, dLV.rows(), times(0,i))*AlvAlvT.diagonal());
+                  cQ.col(j) += sca*rvi;
                 }
                 nll -= Alvm(i).diagonal().array().log().sum(); //log(Alvm(i).determinant());
                 
@@ -2835,6 +2844,7 @@ Type objective_function<Type>::operator() ()
                 it_ind += times(0,i);
 
               }
+              for (int r=0; r<n; r++) A(r)(q,q) = Delta(q,q)*sqrt(rv(r,0));
             }
             
             // REPORT(Alvm);
@@ -2884,14 +2894,17 @@ Type objective_function<Type>::operator() ()
             matrix<Type> AQAQT = AQ *AQ.transpose();
             
             it_ind = 0;
+            matrix<Type> rv = matrix<Type>::Zero(n,1);
             for(i=0; i<nu; i++){
               // Compute Alvm*Alvm'
               AlvAlvT = Alvm(i) * Alvm(i).transpose();
+              matrix<Type> rvi = dLV.block(0,it_ind, dLV.rows(), times(0,i))*AlvAlvT.diagonal();
+              rv += rvi;
               
               matrix<Type> DAQD = (Delta*AQAQT*Delta.transpose());
               for (j=0; j<p;j++){
                 Type sca = 0.5 * (newlam.col(j).transpose() * DAQD * newlam.col(j)).sum();
-                cQ.col(j) += sca*(dLV.block(0,it_ind, dLV.rows(), times(0,i))*AlvAlvT.diagonal());
+                cQ.col(j) += sca*rvi;
               }
               
               nll -= num_corlv*Alvm(i).diagonal().array().log().sum() + times(0,i)*AQ.diagonal().array().log().sum(); //log(Alvm(i).determinant());
@@ -2928,6 +2941,7 @@ Type objective_function<Type>::operator() ()
               }
               it_ind += times(0,i); 
             }
+            for (int r=0; r<n; r++) A(r) = sqrt(rv(r,0))*Delta*AQ;
             REPORT(Alvm);
           }
           
