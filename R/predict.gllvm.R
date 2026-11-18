@@ -59,7 +59,8 @@
 #'
 #'@export
 #'@export predict.gllvm
-predict.gllvm <- function(object, newX = NULL, newTR = NULL, newLV = NULL, type ="link", level = 1, offset = TRUE, se.fit = FALSE, alpha = 0.95, seed = 42, ordinal.cat = NULL, spp = NULL, ...){
+predict.gllvm <- function(object, newX = NULL, newTR = NULL, newLV = NULL, type ="link", level = 1, offset = TRUE, se.fit = FALSE, alpha = 0.95, seed = 42, ordinal.cat = NULL, 
+                          include_lv = FALSE, spp = NULL, ...){
 
   # if((is.numeric(se.fit)||se.fit) && any(object$family == "ordinal"))warning("Confidence intervals for ordinal models can be sensitive to the number of simulations.")
   if(type=="class" & all(!(object$family %in% c("binomial", "ordinal")))) {
@@ -514,6 +515,9 @@ predict.gllvm <- function(object, newX = NULL, newTR = NULL, newLV = NULL, type 
   preds <- NULL
   if ("link" %in% type)
     out <- eta
+    if (include_lv) { # this should probably be illegal
+      out <- cbind(out,getLV(object,type="marginal"))
+    }
   if ("response" %in% type) {
     out <- matrix(NA_real_, nrow = nrow(eta), ncol = length(spp_idx))
     for (j in unique(pointer)) {
@@ -601,6 +605,7 @@ predict.gllvm <- function(object, newX = NULL, newTR = NULL, newLV = NULL, type 
       newobject <- perturb.gllvm(object, params, r, type)
       pred_r <- predict(newobject, newX = newX, newTR = newTR, newLV = newLV,
                         type = type, level = level, offset = offset,
+                        include_lv = include_lv,
                         se.fit = FALSE, ordinal.cat = ordinal.cat, spp = spp)
       if(!any(object$family == "ordinal") || type == "link" || !is.null(ordinal.cat))
         predSims[r,,] <- pred_r
@@ -762,15 +767,15 @@ perturb.gllvm <- function(object, params, r, type = "response", skeleton = NULL,
   rfs   <- params$rfs
   incl  <- params$incl
   incla <- params$incla
-
+  
   num.lv    <- object$num.lv
   num.RR    <- object$num.RR
   num.lv.c  <- object$num.lv.c
   quadratic <- object$quadratic
   p         <- ncol(object$y)
-
+  
   if(is.null(skeleton)) skeleton <- object$TMBfn$env$parList()
-
+  
   # blank all params so nothing leaks from the fitted values
   if(!is.null(template)){
     newobject <- template
@@ -779,7 +784,7 @@ perturb.gllvm <- function(object, params, r, type = "response", skeleton = NULL,
     newobject$params <- lapply(object$params, function(x){ if(is.numeric(x)) x[] <- NA; x })
     if(!is.null(newobject$lvs)) newobject$lvs[] <- NA
   }
-
+  
   if(sum(incl) > 0){
     newpars <- relist_gllvm(ffs[r, ], skeleton)
     
@@ -790,7 +795,7 @@ perturb.gllvm <- function(object, params, r, type = "response", skeleton = NULL,
       rownames(newobject$params$Xcoef) <- rownames(object$params$Xcoef)
       colnames(newobject$params$Xcoef) <- colnames(object$params$Xcoef)
     }
-
+    
     if((num.lv + num.lv.c) > 0){
       newobject$params$sigma.lv <- abs(newpars$sigmaLV)
       names(newobject$params$sigma.lv) <- names(object$params$sigma.lv)
@@ -807,17 +812,17 @@ perturb.gllvm <- function(object, params, r, type = "response", skeleton = NULL,
         if(p > 1){
           theta[lower.tri(theta[, seq_len(num.lv), drop = FALSE], diag = FALSE)] <- newpars$lambda
           if(quadratic != FALSE)
-            theta <- cbind(theta, matrix(-abs(newpars$lambda2), ncol = num.lv, nrow = p, byrow = TRUE))
+            theta <- cbind(theta, matrix(-newpars$lambda2^2, ncol = num.lv, nrow = p, byrow = TRUE))
         } else {
-          theta <- if(quadratic == FALSE) as.matrix(1) else c(as.matrix(1), -abs(newpars$lambda2))
+          theta <- if(quadratic == FALSE) as.matrix(1) else c(as.matrix(1), -newpars$lambda2^2)
         }
       } else if(num.lv == 0 && (num.lv.c + num.RR) > 0){
         if(p > 1){
           theta[lower.tri(theta[, seq_len(num.lv.c + num.RR), drop = FALSE], diag = FALSE)] <- newpars$lambda
           if(quadratic != FALSE)
-            theta <- cbind(theta, matrix(-abs(newpars$lambda2), ncol = num.lv.c + num.RR, nrow = p, byrow = TRUE))
+            theta <- cbind(theta, matrix(-newpars$lambda2^2, ncol = num.lv.c + num.RR, nrow = p, byrow = TRUE))
         } else {
-          theta <- if(quadratic == FALSE) as.matrix(1) else c(as.matrix(1), -abs(newpars$lambda2))
+          theta <- if(quadratic == FALSE) as.matrix(1) else c(as.matrix(1), -newpars$lambda2^2)
         }
       } else {
         if(p > 1){
@@ -827,16 +832,16 @@ perturb.gllvm <- function(object, params, r, type = "response", skeleton = NULL,
           theta[, (nc1 + 1):ncol(theta)][lower.tri(theta[, (nc1 + 1):ncol(theta), drop = FALSE], diag = FALSE)] <-
             newpars$lambda[(sum(lower.tri(theta[, seq_len(nc1), drop = FALSE], diag = FALSE)) + 1):length(newpars$lambda)]
           if(quadratic != FALSE)
-            theta <- cbind(theta, matrix(-abs(newpars$lambda2), ncol = num.lv + nc1, nrow = p, byrow = TRUE))
+            theta <- cbind(theta, matrix(-newpars$lambda2^2, ncol = num.lv + nc1, nrow = p, byrow = TRUE))
         } else {
-          theta <- if(quadratic == FALSE) as.matrix(1) else c(as.matrix(1), -abs(newpars$lambda2))
+          theta <- if(quadratic == FALSE) as.matrix(1) else c(as.matrix(1), -newpars$lambda2^2)
         }
       }
       rownames(theta) <- rownames(object$params$theta)
       colnames(theta) <- colnames(object$params$theta)
       newobject$params$theta <- theta
     }
-
+    
     if(any(object$family %in% c("ZIP","ZINB"))){
       lp0 <- newpars$lg_phi[object$disp.group]
       newobject$params$phi <- object$params$phi
@@ -881,13 +886,13 @@ perturb.gllvm <- function(object, params, r, type = "response", skeleton = NULL,
       newobject$params$row.params.fixed <- c(newpars$r0f)
       names(newobject$params$row.params.fixed) <- names(object$params$row.params.fixed)
     }
-    if(num.RR > 0 && isFALSE(object$randomB)){
+    if((num.RR+num.lv.c) > 0 && isFALSE(object$randomB)){
       newobject$params$LvXcoef <- newpars$b_lv
       rownames(newobject$params$LvXcoef) <- rownames(object$params$LvXcoef)
       colnames(newobject$params$LvXcoef) <- colnames(object$params$LvXcoef)
     }
   }
-
+  
   if(sum(incla) > 0){
     newrfs <- relist_gllvm(rfs[r, ], skeleton)
     if(!is.null(newrfs$Br)){
