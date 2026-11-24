@@ -359,6 +359,89 @@ Type objective_function<Type>::operator() ()
   //   }
   // }
   
+  // Exp decaying time
+  matrix<Type> eta_lvexp(x_lv.rows(), b_lv.cols());
+  
+  if((timeIndex(0,0) > -1) ) {
+    eta_lvexp.setZero();
+    // timeIndex first row, column
+    // timeIndex second row, indicating if interaction:
+    // -1=not an interaction
+    // c>0 = interaction with column c
+    int rlv = rho_lvc.rows();
+    // if(timeIndex(0)<x_lv.cols()){
+    matrix<Type> rho_nu(dLV.cols(), rlv);
+    
+    if((cw > 0)){
+      // vector<Type> rho_nu(nu);
+      int it_ind = 0;
+      for (int i=0; i<times.row(0).size(); i++) {
+        for (int i2=0; i2<times(0,i); i2++) {
+          // rho_nu(it_ind) = 1/exp(rho_lvc(0,i));
+          for (int j1=0; j1<rlv; j1++) {
+            rho_nu(it_ind,j1) = 1/exp(rho_lvc(j1,i));
+          }
+          it_ind ++;
+        }
+        // it_ind += times(0,i);
+      }
+    } else {
+      for (int i=0; i<times.row(0).size(); i++) {
+        // rho_nu(it_ind) = 1/exp(rho_lvc(0,i));
+        for (int j1=0; j1<rlv; j1++) {
+          rho_nu(i,j1) = 1/exp(rho_lvc(j1,i));
+        }
+      }
+      
+    }
+    
+    // vector<Type> LV_effect = dLV * rho_nu;
+    matrix<Type> LV_effect = dLV * rho_nu;
+    int T = timeIndex.cols();
+    
+    for(int t = 0; t < T; t++) {
+      
+      int k = timeIndex(0,t);  // x_lv:n sarake, jota käsitellään
+      
+      for(int i = 0; i < n; i++) {
+        
+        Type v = x_lv(i, k);   // yksi arvo sarakkeesta k
+        
+        bool doTransform = false;
+        if(timeIndex.rows() > 1) {
+          if(timeIndex(1,t) == -1) {
+            // Jatkuva muuttuja → muunnos aina
+            doTransform = true;
+          } else {
+            // Interaktio → muunnos vain jos kategoria on aktiivinen
+            if(x_lv(i, timeIndex(1,t)) > 0) {
+              doTransform = true;
+            }
+          }
+        } else if(v > 0) {
+          doTransform = true;
+        }
+        
+        for(int d = 0; d < b_lv.cols(); d++) {
+          if(doTransform) {
+            // eta_lvexp(i,d) += b_lv(k,d) *exp(-LV_effect(i) * v);
+            eta_lvexp(i,d) += b_lv(k,d) *exp(-LV_effect(i,d) * v);
+            // eta_lvexp(i,d) += b_lv(k,d) *exp(-dLV.row(i) * rho_nu.col(d) * v);
+          } else {
+            eta_lvexp(i,d) += b_lv(k,d) * v;
+          }
+        }
+        x_lv(i, k) = 0;
+      }
+    }
+    REPORT(eta_lvexp);
+    REPORT(T);
+    REPORT(timeIndex);
+    REPORT(b_lv);
+    REPORT(LV_effect);
+    // x_lv.col(timeIndex(0)) += -x_lv.col(timeIndex(0)) + exp(-x_lv.col(timeIndex(0))*(dLV*rho_nu)); //exp(
+  }
+  
   matrix<Type> mu(n,p);
   
   
@@ -636,6 +719,9 @@ Type objective_function<Type>::operator() ()
       //predictor coefficients RRR.  num_RR comes after num_lv_c
       //Since later dimensions are more likely to have less residual variance
       eta += x_lv*b_lv.rightCols(num_RR)*RRgamma;
+      if((timeIndex(0,0) > -1)){
+        eta += eta_lvexp.rightCols(num_RR)*RRgamma;
+      }
       
       //quadratic terms for fixed-effects only RRR
       //-num_lv to ensure that we pick num_RR from the middle
@@ -2496,6 +2582,9 @@ Type objective_function<Type>::operator() ()
         //predictor coefficients for constrained ordination
         b_lv2.leftCols(num_lv_c) = b_lv.leftCols(num_lv_c);
         eta += x_lv*b_lv2*newlam;
+        if((timeIndex(0,0) > -1) ){
+          eta += eta_lvexp.leftCols(num_lv_c)*newlam;
+        }
         
       }else if((nlvr>0) && (random(2)>0) && (quadratic > 0)){
         if(num_lv_c>0)b_lv2.leftCols(num_lv_c) = b_lv.leftCols(num_lv_c);
@@ -4520,87 +4609,87 @@ Type objective_function<Type>::operator() ()
     
     
     
-    matrix<Type> eta_lvexp(x_lv.rows(), b_lv.cols());
-    eta_lvexp.setZero();
-    
-    if((timeIndex(0,0) > -1) ) {
-      // timeIndex first row, column
-      // timeIndex second row, indicating if interaction:
-      // -1=not an interaction
-      // c>0 = interaction with column c
-      int rlv = rho_lvc.rows();
-      // if(timeIndex(0)<x_lv.cols()){
-      matrix<Type> rho_nu(dLV.cols(), rlv);
-      
-      if((cw > 0)){
-        // vector<Type> rho_nu(nu);
-        int it_ind = 0;
-        for (int i=0; i<times.row(0).size(); i++) {
-          for (int i2=0; i2<times(0,i); i2++) {
-            // rho_nu(it_ind) = 1/exp(rho_lvc(0,i));
-            for (int j1=0; j1<rlv; j1++) {
-              rho_nu(it_ind,j1) = 1/exp(rho_lvc(j1,i));
-            }
-            it_ind ++;
-          }
-          // it_ind += times(0,i);
-        }
-      } else {
-        for (int i=0; i<times.row(0).size(); i++) {
-          // rho_nu(it_ind) = 1/exp(rho_lvc(0,i));
-          for (int j1=0; j1<rlv; j1++) {
-            rho_nu(i,j1) = 1/exp(rho_lvc(j1,i));
-          }
-        }
-        
-      }
-      
-      // vector<Type> LV_effect = dLV * rho_nu;
-      matrix<Type> LV_effect = dLV * rho_nu;
-      int T = timeIndex.cols();
-      
-      for(int t = 0; t < T; t++) {
-        
-        int k = timeIndex(0,t);  // x_lv:n sarake, jota käsitellään
-        
-        for(int i = 0; i < n; i++) {
-          
-          Type v = x_lv(i, k);   // yksi arvo sarakkeesta k
-          
-          bool doTransform = false;
-          if(timeIndex.rows() > 1) {
-            if(timeIndex(1,t) == -1) {
-              // Jatkuva muuttuja → muunnos aina
-              doTransform = true;
-            } else {
-              // Interaktio → muunnos vain jos kategoria on aktiivinen
-              if(x_lv(i, timeIndex(1,t)) > 0) {
-                doTransform = true;
-              }
-            }
-          } else if(v > 0) {
-            doTransform = true;
-          }
-          
-          for(int d = 0; d < b_lv.cols(); d++) {
-            if(doTransform) {
-              // eta_lvexp(i,d) += b_lv(k,d) *exp(-LV_effect(i) * v);
-              eta_lvexp(i,d) += b_lv(k,d) *exp(-LV_effect(i,d) * v);
-              // eta_lvexp(i,d) += b_lv(k,d) *exp(-dLV.row(i) * rho_nu.col(d) * v);
-            } else {
-              eta_lvexp(i,d) += b_lv(k,d) * v;
-            }
-          }
-          x_lv(i, k) = 0;
-        }
-      }
-      REPORT(eta_lvexp);
-      REPORT(T);
-      REPORT(timeIndex);
-      REPORT(b_lv);
-      REPORT(LV_effect);
-      // x_lv.col(timeIndex(0)) += -x_lv.col(timeIndex(0)) + exp(-x_lv.col(timeIndex(0))*(dLV*rho_nu)); //exp(
-    }
+    // matrix<Type> eta_lvexp(x_lv.rows(), b_lv.cols());
+    // eta_lvexp.setZero();
+    // 
+    // if((timeIndex(0,0) > -1) ) {
+    //   // timeIndex first row, column
+    //   // timeIndex second row, indicating if interaction:
+    //   // -1=not an interaction
+    //   // c>0 = interaction with column c
+    //   int rlv = rho_lvc.rows();
+    //   // if(timeIndex(0)<x_lv.cols()){
+    //   matrix<Type> rho_nu(dLV.cols(), rlv);
+    //   
+    //   if((cw > 0)){
+    //     // vector<Type> rho_nu(nu);
+    //     int it_ind = 0;
+    //     for (int i=0; i<times.row(0).size(); i++) {
+    //       for (int i2=0; i2<times(0,i); i2++) {
+    //         // rho_nu(it_ind) = 1/exp(rho_lvc(0,i));
+    //         for (int j1=0; j1<rlv; j1++) {
+    //           rho_nu(it_ind,j1) = 1/exp(rho_lvc(j1,i));
+    //         }
+    //         it_ind ++;
+    //       }
+    //       // it_ind += times(0,i);
+    //     }
+    //   } else {
+    //     for (int i=0; i<times.row(0).size(); i++) {
+    //       // rho_nu(it_ind) = 1/exp(rho_lvc(0,i));
+    //       for (int j1=0; j1<rlv; j1++) {
+    //         rho_nu(i,j1) = 1/exp(rho_lvc(j1,i));
+    //       }
+    //     }
+    //     
+    //   }
+    //   
+    //   // vector<Type> LV_effect = dLV * rho_nu;
+    //   matrix<Type> LV_effect = dLV * rho_nu;
+    //   int T = timeIndex.cols();
+    //   
+    //   for(int t = 0; t < T; t++) {
+    //     
+    //     int k = timeIndex(0,t);  // x_lv:n sarake, jota käsitellään
+    //     
+    //     for(int i = 0; i < n; i++) {
+    //       
+    //       Type v = x_lv(i, k);   // yksi arvo sarakkeesta k
+    //       
+    //       bool doTransform = false;
+    //       if(timeIndex.rows() > 1) {
+    //         if(timeIndex(1,t) == -1) {
+    //           // Jatkuva muuttuja → muunnos aina
+    //           doTransform = true;
+    //         } else {
+    //           // Interaktio → muunnos vain jos kategoria on aktiivinen
+    //           if(x_lv(i, timeIndex(1,t)) > 0) {
+    //             doTransform = true;
+    //           }
+    //         }
+    //       } else if(v > 0) {
+    //         doTransform = true;
+    //       }
+    //       
+    //       for(int d = 0; d < b_lv.cols(); d++) {
+    //         if(doTransform) {
+    //           // eta_lvexp(i,d) += b_lv(k,d) *exp(-LV_effect(i) * v);
+    //           eta_lvexp(i,d) += b_lv(k,d) *exp(-LV_effect(i,d) * v);
+    //           // eta_lvexp(i,d) += b_lv(k,d) *exp(-dLV.row(i) * rho_nu.col(d) * v);
+    //         } else {
+    //           eta_lvexp(i,d) += b_lv(k,d) * v;
+    //         }
+    //       }
+    //       x_lv(i, k) = 0;
+    //     }
+    //   }
+    //   REPORT(eta_lvexp);
+    //   REPORT(T);
+    //   REPORT(timeIndex);
+    //   REPORT(b_lv);
+    //   REPORT(LV_effect);
+    //   // x_lv.col(timeIndex(0)) += -x_lv.col(timeIndex(0)) + exp(-x_lv.col(timeIndex(0))*(dLV*rho_nu)); //exp(
+    // }
     
     
     using namespace density;
