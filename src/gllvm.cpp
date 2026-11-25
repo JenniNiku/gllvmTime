@@ -420,19 +420,30 @@ Type objective_function<Type>::operator() ()
         } else if(v > 0) {
           doTransform = true;
         }
-        for(int d = 0; d < b_lv.cols(); d++) {
+        if(num_lv_c == 1) {
           if(doTransform) {
             // --- divide by b_lv later to calculate quadratic term? --- //
             // eta_lvexp(i,d) += b_lv(k,d) *exp(-LV_effect(i) * v);
-            eta_lvexp(i,d) += b_lv(k,d) *exp(-LV_effect(i,d) * v);
+            x_lv(i, k) = exp(-LV_effect(i,0) * v);
+            //eta_lvexp(i,d) += b_lv(k,d) *exp(-LV_effect(i,d) * v);
             //eta_lvexp(i,d) += exp(-LV_effect(i,d) * v);
             // eta_lvexp(i,d) += b_lv(k,d) *exp(-dLV.row(i) * rho_nu.col(d) * v);
-          } else {
-            eta_lvexp(i,d) += b_lv(k,d) * v;
-            //eta_lvexp(i,d) += v;
           }
+        } else {
+          for(int d = 0; d < b_lv.cols(); d++) {
+            if(doTransform) {
+              // eta_lvexp(i,d) += b_lv(k,d) *exp(-LV_effect(i) * v);
+              eta_lvexp(i,d) += b_lv(k,d) *exp(-LV_effect(i,d) * v);
+              //eta_lvexp(i,d) += exp(-LV_effect(i,d) * v);
+              // eta_lvexp(i,d) += b_lv(k,d) *exp(-dLV.row(i) * rho_nu.col(d) * v);
+            } else {
+              eta_lvexp(i,d) += b_lv(k,d) * v;
+              //eta_lvexp(i,d) += v;
+            }
+          }
+          x_lv(i, k) = 0;
         }
-        x_lv(i, k) = 0;
+        
       }
     }
     REPORT(eta_lvexp);
@@ -720,7 +731,7 @@ Type objective_function<Type>::operator() ()
       //predictor coefficients RRR.  num_RR comes after num_lv_c
       //Since later dimensions are more likely to have less residual variance
       eta += x_lv*b_lv.rightCols(num_RR)*RRgamma;
-      if((timeIndex(0,0) > -1)){
+      if((timeIndex(0,0) > -1 && num_lv_c!=1)){
         eta += eta_lvexp.rightCols(num_RR)*RRgamma;
       }
       
@@ -2583,7 +2594,7 @@ Type objective_function<Type>::operator() ()
         //predictor coefficients for constrained ordination
         b_lv2.leftCols(num_lv_c) = b_lv.leftCols(num_lv_c);
         eta += x_lv*b_lv2*newlam;
-        if((timeIndex(0,0) > -1) ){
+        if((timeIndex(0,0) > -1 && num_lv_c!=1) ){
           eta += eta_lvexp.leftCols(num_lv_c)*newlam;
         }
         
@@ -3121,10 +3132,10 @@ Type objective_function<Type>::operator() ()
             for (int i=0; i<n; i++) {
               eta(i,j) -=  x_lv.row(i)*b_lv2*D(j)*(x_lv.row(i)*b_lv2).transpose();
               
-              // if exponentially decaying
-              if((timeIndex(0,0) > -1) ){
-                eta(i,j) -= eta_lvexp.row(i)*D(j)*eta_lvexp.row(i).transpose();
-              }
+              // does not work properly (the cross-terms are probably to blame)
+              //if((timeIndex(0,0) > -1 && num_lv_c!=1) ){
+              //  eta(i,j) -= eta_lvexp.row(i)*D(j)*eta_lvexp.row(i).transpose();
+              //}
             }
           }
         }
@@ -4763,7 +4774,7 @@ Type objective_function<Type>::operator() ()
       eta += x_lv*b_lv3*RRgamma;
       
       // Exp dec effects:
-      if((timeIndex(0,0) > -1)){
+      if((timeIndex(0,0) > -1 && num_lv_c!=1)){
         eta += eta_lvexp.rightCols(num_RR)*RRgamma;
       }
       
