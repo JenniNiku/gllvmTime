@@ -420,14 +420,16 @@ Type objective_function<Type>::operator() ()
         } else if(v > 0) {
           doTransform = true;
         }
-        
         for(int d = 0; d < b_lv.cols(); d++) {
           if(doTransform) {
+            // --- divide by b_lv later to calculate quadratic term? --- //
             // eta_lvexp(i,d) += b_lv(k,d) *exp(-LV_effect(i) * v);
             eta_lvexp(i,d) += b_lv(k,d) *exp(-LV_effect(i,d) * v);
+            //eta_lvexp(i,d) += exp(-LV_effect(i,d) * v);
             // eta_lvexp(i,d) += b_lv(k,d) *exp(-dLV.row(i) * rho_nu.col(d) * v);
           } else {
             eta_lvexp(i,d) += b_lv(k,d) * v;
+            //eta_lvexp(i,d) += v;
           }
         }
         x_lv(i, k) = 0;
@@ -3118,6 +3120,11 @@ Type objective_function<Type>::operator() ()
           for (int j=0; j<p;j++){
             for (int i=0; i<n; i++) {
               eta(i,j) -=  x_lv.row(i)*b_lv2*D(j)*(x_lv.row(i)*b_lv2).transpose();
+              
+              // if exponentially decaying
+              if((timeIndex(0,0) > -1) ){
+                eta(i,j) -= eta_lvexp.row(i)*D(j)*eta_lvexp.row(i).transpose();
+              }
             }
           }
         }
