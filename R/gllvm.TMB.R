@@ -1401,6 +1401,8 @@ gllvm.TMB <- function(y, X = NULL, lv.X = NULL, xr = matrix(0), formula = NULL, 
       if(starting.val!="zero" && quadratic != FALSE && (num.lv+num.lv.c+num.RR)>0){
         data.list = list(y = y, x = Xd, x_lv = lv.X, xr = xr, dr0 = dr, csR = csR, proptoMats = proptoMats, dLV = dLV, colMatBlocksI = blocks, Abranks = Abranks, Abstruc = Abstruc, xb = spdr, cs = cs, offset=offset, trmsize = trmsize, num_lv = num.lv, num_lv_c = num.lv.c, num_RR = num.RR, num_corlv=num.lv.cor, quadratic = 1, randomB = as.integer(randomB=="LV"), family=familyn, extra=extra,method=switch(method, VA=0, EVA=2),model=0,random=randoml, zetastruc = ifelse(zeta.struc=="species",1,0), times = matrix(times, nrow = 1), cstruc=cstrucn, cstruclv = cstruclvn, cstruclv = cstruclvn, dc=dist_dc, dc_lv = distLV_dc, Astruc=Astruc, NN = NN, Ntrials = Ntrials, nncolMat = nncolMat, csb_lv = csBlv, cw = corWithinLV*1, p_betaH = p_betaH, timeIndex = timeIndex)
         
+        
+        
         # if(row.eff=="random"){
         #   if(dependent.row) sigma<-c(log(sigma), rep(0, num.lv))
         #     #parameter.list = list(r0 = matrix(r0), b = rbind(a,b), B = matrix(0), Br=Br,lambda = lambda, u = u,lg_phi=log(phi),sigmaB=log(diag(sigmaB)),sigmaij=sigmaij,log_sigma=sigma,Au=Au, lg_Ar=lg_Ar,Abb=0, zeta=zeta)
@@ -1409,7 +1411,15 @@ gllvm.TMB <- function(y, X = NULL, lv.X = NULL, xr = matrix(0), formula = NULL, 
         #   map.list$log_sigma = factor(NA)
         #   #parameter.list = list(r0 = matrix(r0), b = rbind(a,b), B = matrix(0), Br=Br,lambda = lambda, u = u,lg_phi=log(phi),sigmaB=log(diag(sigmaB)),sigmaij=sigmaij,log_sigma=0,Au=Au, lg_Ar=lg_Ar,Abb=0, zeta=zeta)
         # }
+        
+        # remove the lambda2 mapping from the 
+        # start value estimation, due to the
+        # initial lambda2 estimate being a single value
         map.list2 <- map.list 
+        if(!(is.null(map.list2$lambda2))){
+          map.list2$lambda2 <- NULL
+        }
+        
         map.list2$sigmaLV = factor(rep(NA,length(sigma.lv)))
         map.list2$r0r = factor(rep(NA, length(r0r)))
         map.list2$sigmaijr = factor(rep(NA, length(sigmaijr)))
@@ -1853,7 +1863,15 @@ gllvm.TMB <- function(y, X = NULL, lv.X = NULL, xr = matrix(0), formula = NULL, 
           if(p>1) {
             theta[lower.tri(theta[,1:num.lv,drop=F],diag=FALSE)] <- param[li];
             if(quadratic!=FALSE){
-              theta<-cbind(theta,matrix(-abs(param[li2]),ncol=num.lv,nrow=p,byrow=T))
+              
+              # custom mapping oflambda2
+              # NB only works if factors are numbers(?)
+              if (!(is.null(map.list$lambda2))) {
+                theta <- cbind(theta,matrix(-abs(param[li2][as.numeric(map.list$lambda2)]),
+                                ncol=num.lv,nrow=p,byrow=T))
+              } else { # if no setMap for lambda2
+                theta<-cbind(theta,matrix(-abs(param[li2]),ncol=num.lv,nrow=p,byrow=T))
+              }
             }
           } else {
             if(quadratic==FALSE){
